@@ -65,11 +65,20 @@ int get_ipv4_addr(char *domain_name, struct sockaddr_in *servinfo) {
     struct addrinfo hints, *addrinfo, *p;
     int status;
 
+    char * real_domain = domain_name;
+    char * pos = strchr(domain_name, ':');
+    if (pos != NULL) {
+	int tmp = (int)(pos - domain_name);
+	if (tmp > 0) {
+            real_domain = strndup(domain_name, tmp);
+	}
+    }
+
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    if((status = getaddrinfo(domain_name, "http", &hints, &addrinfo)) != 0) {
+    if((status = getaddrinfo(real_domain, "http", &hints, &addrinfo)) != 0) {
         printf("Resolve DNS Failed: Can't get ip address! (%s)\n", domain_name);
         return 0;
     }
@@ -318,12 +327,17 @@ int get_best_server(server_data_t *nearest_servers) {
         if(i == 0) {
             best_index = i;
             latency = nearest_servers[i].latency;
-        } else {
+        } 
+	else if (latency == -1) {
+	    best_index = i;
+	    latency = nearest_servers[i].latency;	
+    	} else {
             if(nearest_servers[i].latency < latency && nearest_servers[i].latency != -1) {
                 best_index = i;
                 latency = nearest_servers[i].latency;
             }           
         }
+
     }
     return best_index;
 }
@@ -512,6 +526,9 @@ int speedtest_download(server_data_t *nearest_server) {
                 pthread_create(&thread[i].tid, NULL, download_thread, &thread[i]);
             }
         }
+	if (get_uptime() - start_dl_time > SPEEDTEST_DURATION) {
+            thread_all_stop = 1;
+	}
         if(thread_all_stop)
             break;
     }
@@ -608,6 +625,9 @@ int speedtest_upload(server_data_t *nearest_server) {
                 pthread_create(&thread[i].tid, NULL, upload_thread, &thread[i]);
             }
         }
+	if (get_uptime() - start_ul_time > SPEEDTEST_DURATION) {
+            thread_all_stop = 1;
+	}
         if(thread_all_stop)
             break;
     }
@@ -657,12 +677,13 @@ int main(int argc, char **argv) {
         memset(&nearest_servers[i], 0, sizeof(server_data_t));
     }
 
-    if(get_ipv4_addr(SPEEDTEST_DOMAIN_NAME, &servinfo)) {
-        if(!get_http_file(&servinfo, SPEEDTEST_DOMAIN_NAME, CONFIG_REQUEST_URL, CONFIG_REQUEST_URL)) {
+    if(get_ipv4_addr(SPEEDTEST_SERVERS_DOMAIN_NAME, &servinfo)) {
+        if(!get_http_file(&servinfo, SPEEDTEST_SERVERS_DOMAIN_NAME, CONFIG_REQUEST_URL, CONFIG_REQUEST_URL)) {
             printf("Can't get your IP address information.\n");
             return 0;
         }
     }
+
     if(get_ipv4_addr(SPEEDTEST_SERVERS_DOMAIN_NAME, &servinfo)) {
         if(!get_http_file(&servinfo, SPEEDTEST_SERVERS_DOMAIN_NAME, SERVERS_LOCATION_REQUEST_URL, SERVERS_LOCATION_REQUEST_URL)) {
             printf("Can't get servers list.\n");
